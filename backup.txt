@@ -1,0 +1,707 @@
+#include <GUIConstantsEX.au3>
+#include <StaticConstants.au3>
+#include <ButtonConstants.au3>
+#include <GuiEdit.au3>
+#include <GuiRichEdit.au3>
+#include <GuiButton.au3>
+#include <Color.au3>
+#include <WindowsConstants.au3>
+#include <StringConstants.au3>
+#include <WinAPISys.au3>
+
+;~ #include <MsgBoxConstants.au3>
+
+gui4gdb()
+
+; retreverse grafic user interface (gui) for (4) GNU debuger (gdb)
+Func gui4gdb()
+
+   Local $lt = 0
+   If @KBLayout <> 0409 Then
+	  Send("#{SPACE}")
+	  $lt = 1
+   EndIf
+   Sleep(100)
+
+   Local $pth = recSFP_com()	; read path to source file from command line
+   Local $sText = rec_sText($pth[1])	; read source text from source file
+
+   Local $guiWindowIDs = createGUIwindow($sText,$pth)	; create GUI window
+
+   run_gui($guiWindowIDs,$pth) ; start loop of work with GDB debuger without testing
+
+;~    Local $exitGUICode = run_gui($guiWindowIDs,$pth) ;start loop of work with GDB debuger with testing
+
+   If $lt == 1 Then
+	  Send("#{SPACE}")
+	  $lt = 0
+   EndIf
+   Sleep(100)
+
+   hunter_killer($pth[1])	; kill GDB and programm tasks if something go wrong {safety net}
+
+EndFunc
+
+; recieve (rec) sources from path (sfp) in command line (com)
+Func recSFP_com()
+   Local $pth[2]
+   Local $wfPath = "", $sfPath = ""	; work folder path (wpath) and source file path (sfpath)
+   If $CmdLine[0] = 0 Then	; to start as script
+	  $wfPath= "./"
+	  $sfPath = "./example"
+   Else		; to start as program
+	  $wfPath = $CmdLine[1]	; no need a backward slash
+	  $sfPath = $CmdLine[2]	; no need a source extention
+   EndIf
+   $pth[0] = $wfPath	; for GDB debugger
+   $pth[1] = $sfPath	; for source view
+   Return $pth
+EndFunc
+
+; receve (rec) source text (stext) from source file
+Func rec_sText(ByRef $sfPath)
+   Local $sFID = FileOpen($sfPath & ".c")
+   Local $sText = FileRead($sFID)
+   FileClose($sFID)
+   Return $sText
+EndFunc
+
+Func createGUIwindow(ByRef $sText, ByRef $pth)
+   Local $guiWindowIDs[20]
+   ; general gui window
+   $guiWindowIDs[0] = "AtIT-debuger"
+   $guiWindowIDs[1] = GUICreate("AtIT-debuger", 1600, 986)
+   ; source viewer
+   $guiWindowIDs[2] = _GUICtrlRichEdit_Create($guiWindowIDs[1],"Source viewer",10,50,1080,610,BitOR($ES_MULTILINE, $WS_VSCROLL))	; 'BitOr' to skroll edit control
+   _GUICtrlEdit_SetReadOnly($guiWindowIDs[2],$ES_READONLY)	; to block for changes in edit control
+   ; debuger viewer
+   $guiWindowIDs[3] = _GUICtrlRichEdit_Create($guiWindowIDs[1],"Debuger viewer",10,700,750,280,BitOR($ES_MULTILINE, $WS_VSCROLL))
+   _GUICtrlEdit_SetReadOnly($guiWindowIDs[3],$ES_READONLY)
+   ; button set new breakpoint to select line
+   $guiWindowIDs[4] = GUICtrlCreateButton("Set BP", 10, 10, 50,30)
+   ; button remove breakpoint from select line
+   $guiWindowIDs[5] = GUICtrlCreateButton("Unset BP", 70, 10, 60,30)
+   ; button start GDB-shell
+   $guiWindowIDs[6] = GUICtrlCreateButton("Start debug", 10, 665, 100,30)
+   ; button run the "main" porgram rom source
+   $guiWindowIDs[7] = GUICtrlCreateButton("Run debug", 120, 665, 100,30)
+   ; button continue to the next breakpoint or end of "main"
+   $guiWindowIDs[8] = GUICtrlCreateButton("Continue", 230, 665, 100,30)
+
+#CS
+   ; button to do step with iteration in function
+   $guiWindowIDs[9] = GUICtrlCreateButton("Step In", 340, 665, 75,30)
+   ; button to do step with iteration in function
+   $guiWindowIDs[10] = GUICtrlCreateButton("Step Out", 425, 665, 75,30)
+#CE
+
+   ; button to do step with iteration in function
+   $guiWindowIDs[9] = GUICtrlCreateLabel("Step In", 340, 665, 75, 30, $SS_CENTER)
+   ; button to do step with iteration in function
+   $guiWindowIDs[10] = GUICtrlCreateLabel("Step Out", 425, 665, 75, 30, $SS_CENTER)
+
+   ; button to show variable in function
+   $guiWindowIDs[11] = GUICtrlCreateButton("Show variables", 510, 665, 100,30)
+   ; button to stop GDB-shell
+   $guiWindowIDs[12] = GUICtrlCreateButton("Stop debug", 620, 665, 100,30)
+   ; variables viewer
+   $guiWindowIDs[13] = _GUICtrlRichEdit_Create($guiWindowIDs[1],"Variables viewer",1100,750,490,230,BitOR($ES_MULTILINE, $WS_VSCROLL))
+   _GUICtrlEdit_SetReadOnly($guiWindowIDs[13],$ES_READONLY)
+   ; debuger run-window viewer
+   $guiWindowIDs[14] = _GUICtrlRichEdit_Create($guiWindowIDs[1],"Debuger run-window viewer",770,750,320,230,BitOR($ES_MULTILINE, $WS_VSCROLL))
+   _GUICtrlEdit_SetReadOnly($guiWindowIDs[14],$ES_READONLY)
+   ; test message viewer
+   $guiWindowIDs[15] = _GUICtrlRichEdit_Create($guiWindowIDs[1],"Test message viewer",770,700,320,40)
+   _GUICtrlEdit_SetReadOnly($guiWindowIDs[15],$ES_READONLY)
+   ; checkbox for display a minor set of variable
+   $guiWindowIDs[16] = GUICtrlCreateCheckbox("Seek minor variables :", 975, 670)
+   ; minor variables list editor
+   $guiWindowIDs[17] = _GUICtrlRichEdit_Create($guiWindowIDs[1],"Replace it with minor variables list",1100,665,490,75,BitOR($ES_MULTILINE, $WS_VSCROLL))
+   ; checkbox for display a minor set of variable
+   $guiWindowIDs[18] = GUICtrlCreateCheckbox("Clear worksheet after debuger stop :", 145, 15)
+   $guiWindowIDs[19] = _GUICtrlRichEdit_Create($guiWindowIDs[1],"Cannot open the manual file",1100,50,490,610,BitOR($ES_MULTILINE, $WS_VSCROLL))
+   _GUICtrlEdit_SetReadOnly($guiWindowIDs[19],$ES_READONLY)
+
+   Global $manual = $guiWindowIDs[19]
+
+   GUISetState(@SW_SHOW, $guiWindowIDs[1])	; show main gui window
+   If $sText == "" Then	; past text from source file to source viewer only when exclude correct source file
+	  _GUICtrlRichEdit_InsertText($guiWindowIDs[2], @CRLF & "If You see this lines it's mean You exclude the wrong source file")
+   Else
+	  _GUICtrlRichEdit_SetText($guiWindowIDs[2],$sText)
+   EndIf
+   desh_source($guiWindowIDs)	; set space for brakepoints
+
+   Return $guiWindowIDs
+EndFunc
+
+; set space for mark brakepoint
+Func desh_source(ByRef $guiWindowIDs)
+   ; for all lines untill last insets 9 space symbols
+   For $idx = 0 To _GUICtrlEdit_GetLineCount($guiWindowIDs[2]) - 2
+	  _GUICtrlEdit_InsertText($guiWindowIDs[2],"         ",_GUICtrlEdit_LineIndex($guiWindowIDs[2], $idx))
+   Next
+EndFunc
+
+; That a main function to work with GUI
+Func run_gui(ByRef $guiWindowIDs, ByRef $pth)
+;~    Local $exitGUICode = 0 ; test variable
+
+   gui4gdb_Info($guiWindowIDs)
+
+   mainloop($guiWindowIDs, $pth)
+
+;~    Return $exitGUICode
+EndFunc
+
+Func gui4gdb_Info(ByRef $guiWindowIDs)
+   Local $script_path = StringSplit(@AutoItExe, "\"), $fold_path = ""
+   For $idx = 1 To $script_path[0] - 1
+	  $fold_path &= $script_path[$idx]
+	  $fold_path &= "/"
+   Next
+   Local $mnlFID = FileOpen($fold_path & "/gui4gdb_Info.txt")
+   Local $mnlText = FileRead($mnlFID)
+   FileClose($mnlFID)
+   _GUICtrlEdit_SetText($guiWindowIDs[19],$mnlText)
+   _GUICtrlRichEdit_AutoDetectURL($guiWindowIDs[19], True)
+EndFunc
+
+Func WM_NOTIFY($hWnd, $iMsg, $iWparam, $iLparam)
+   Local $script_path = StringSplit(@AutoItExe, "\"), $fold_path = ""
+   For $idx = 1 To $script_path[0] - 1
+	  $fold_path &= $script_path[$idx]
+	  $fold_path &= "/"
+   Next
+    #forceref $hWnd, $iMsg, $iWparam
+    Local $hWndFrom, $iCode, $tNMHDR, $tEnLink, $cpMin, $cpMax, $tMsgFilter
+    $tNMHDR = DllStructCreate($tagNMHDR, $iLparam)
+    $hWndFrom = HWnd(DllStructGetData($tNMHDR, "hWndFrom"))
+    $iCode = DllStructGetData($tNMHDR, "Code")
+    Switch $hWndFrom
+        Case $manual
+            Select
+                Case $iCode = $EN_LINK
+                    $tMsgFilter = DllStructCreate($tagMSGFILTER, $iLparam)
+                    If DllStructGetData($tMsgFilter, "msg") = $WM_LBUTTONUP Then
+                        $tEnLink = DllStructCreate($tagENLINK, $iLparam)
+                        $cpMin = DllStructGetData($tEnLink, "cpMin")
+                        $cpMax = DllStructGetData($tEnLink, "cpMax")
+						Run("hh.exe " & $fold_path & "/GUI4GDB[en].chm")
+                    EndIf
+            EndSelect
+    EndSwitch
+    Return $GUI_RUNDEFMSG
+EndFunc   ;==>WM_NOTIFY
+
+; That a main loop to work with GUI
+Func mainloop(ByRef $guiWindowIDs, ByRef $pth)
+   Local $bpList[_GUICtrlEdit_GetLineCount($guiWindowIDs[2])]	; create breakpoint (bp) list with width equal to count of source file line
+   Local $tStep = "" 	; variable to check state of running "main" program (this (t) state)
+   Local $gdbWin, $gdbRunWin	; reference to GDB window (win) and GDB run window
+   Local $stopRets[2]	; state when stopped (stop) retrivers (rets) with sheet
+
+   GUIRegisterMsg($WM_NOTIFY, "WM_NOTIFY")
+   _GUICtrlRichEdit_SetEventMask($guiWindowIDs[19], $ENM_LINK)
+
+   While ProcessExists(WinGetProcess($guiWindowIDs[1]))
+
+	  Switch GUIGetMsg()
+	  Case $GUI_EVENT_CLOSE	; if gui send essage about push on standart 'exit' button
+		 GUIDelete()
+		 ExitLoop
+
+	  Case $guiWindowIDs[4]	; -//- 'set breakpoint'
+		 If $gdbWin == "" Then	; only break if debuger is not starting
+			$bpList = set_bp($guiWindowIDs,$bpList)
+			$bpList = sort_bpl($bpList)
+		 Else
+			_GUICtrlRichEdit_SetText($guiWindowIDs[15],"Debuger is starting")
+		 EndIf
+
+	  Case $guiWindowIDs[5]	; -//- 'unset breakpoint'
+		 If $gdbWin == "" Then	; only break if debuger is not starting
+			$bpList = unset_bp($guiWindowIDs,$bpList)
+		 Else
+			_GUICtrlRichEdit_SetText($guiWindowIDs[15],"Debuger is starting")
+		 EndIf
+
+	  Case $guiWindowIDs[6]		; -//- 'start debug' (start debuger)
+		 If $gdbWin == "" Then	; only start if has no another debuger
+			$gdbWin = start_gdb($bpList,$pth,$guiWindowIDs)
+		 Else
+			_GUICtrlRichEdit_SetText($guiWindowIDs[15],"Debuger is already starting")
+		 EndIf
+		 Sleep(5)
+		 print_gdb($gdbWin, $guiWindowIDs)	; display previous debuger output
+
+	  Case $guiWindowIDs[7]		; -//- 'run debug' (run debug program)
+		 If $gdbWin == "" Then	; only run if debuger has started
+			_GUICtrlRichEdit_SetText($guiWindowIDs[15],"Debuger is not starting")
+		 Else
+			If $tStep == "" Then	; only run if no has any other running program in debuger
+			   $tStep = 0
+			   $gdbRunWin = run_gdb($gdbWin, $guiWindowIDs)
+			   Sleep(5)
+			   print_gdb($gdbWin, $guiWindowIDs)	; display addition debuger output
+			   print_gdbRun($gdbRunWin, $guiWindowIDs)	; display start to bp program output
+			   $tStep = current($tStep, $bpList, $guiWindowIDs)	; mark to current bp
+			Else
+			   _GUICtrlRichEdit_SetText($guiWindowIDs[15],"Program is already running")
+			EndIf
+		 EndIf
+
+	  Case $guiWindowIDs[8]	; -//- 'continue' (continue debug program)
+		 If $tStep == "" Then	; continued only if program has running
+			_GUICtrlRichEdit_SetText($guiWindowIDs[15],"Program is not running")
+		 Else
+			cn_gdb($gdbWin, $guiWindowIDs)
+			$tStep = current($tStep, $bpList, $guiWindowIDs)	; mark next bp
+			Sleep(5)
+			print_gdb($gdbWin, $guiWindowIDs)	; display addition debuger output
+			print_gdbRun($gdbRunWin, $guiWindowIDs)	; display addition to bp program output
+		 EndIf
+
+#CS
+	  Case $guiWindowIDs[9]	; -//- 'step in' (step in function of debug program)
+		 If $tStep == "" Then	; step only if program has running
+			_GUICtrlRichEdit_SetText($guiWindowIDs[15],"Program is not running")
+		 Else
+			sIn_gdb($gdbWin, $guiWindowIDs)
+			Sleep(5)
+			print_gdb($gdbWin, $guiWindowIDs)	; display addition debuger output
+			print_gdbRun($gdbRunWin, $guiWindowIDs)	; display addition to bp program output
+		 EndIf
+
+	  Case $guiWindowIDs[10]	; -//- 'step out' (step out of function of debug program)
+		 If $tStep == "" Then	; step only if program has running
+			_GUICtrlRichEdit_SetText($guiWindowIDs[15],"Program is not running")
+		 Else
+			sOut_gdb($gdbWin, $guiWindowIDs)
+			Sleep(5)
+			print_gdb($gdbWin, $guiWindowIDs)	; display addition debuger output
+			print_gdbRun($gdbRunWin, $guiWindowIDs)	; display addition to bp program output
+		 EndIf
+#CE
+
+	  Case $guiWindowIDs[11]	; -//- 'show variables'
+		 If $tStep == "" Then	; display variables only when debug progrum is running
+			_GUICtrlRichEdit_SetText($guiWindowIDs[15],"Program is not running")
+		 Else
+			 pVarGen($guiWindowIDs, $gdbWin)	; display current variables value
+		 EndIf
+
+	  Case $guiWindowIDs[12]	; -//- 'stop debug' (stope debuger)
+		 If $gdbWin == "" Then	; stoped only if debuger is starting
+			_GUICtrlRichEdit_SetText($guiWindowIDs[15],"Debuger is not starting")
+		 Else
+			$stopRets = stop_gdb($gdbWin, $tStep, $bpList, $guiWindowIDs)	; after stopped:
+			$gdbWin = $stopRets[0]	; no have debuger window
+			$tStep = $stopRets[1]	; no have running steps
+			If BitAND(GUICtrlRead($guiWindowIDs[18]), $GUI_CHECKED) Then	; only when clear flag is checked
+			   $bpList = clrWrkSht($guiWindowIDs, $bpList)	; need to clear worksheet to update it with default state
+			EndIf
+		 EndIf
+	  EndSwitch
+
+   WEnd
+EndFunc
+
+; clear (clr) worksheet (wrksht)
+Func clrWrkSht(ByRef $guiWindowIDs, ByRef $bpList)
+   For $idx = 0 To UBound($bpList) - 1
+	  unmark_bp($guiWindowIDs,($bpList[$idx] - 1))	; clear all breapoint marks
+   Next
+   Sleep(10)
+   For $idx = 0 To UBound($bpList) - 1
+	  $bpList[$idx] = ""	; clear breakpoints list
+   Next
+   ; return all viewers to default state
+   _GUICtrlRichEdit_SetText($guiWindowIDs[3],"Debuger viewer")	; clear debuger viewer state
+   _GUICtrlRichEdit_SetText($guiWindowIDs[13],"Variables viewer")	; clear variables viewer state
+   _GUICtrlRichEdit_SetText($guiWindowIDs[14],"Debuger run-window viewer")	; clear debuger run-window viewer state
+   _GUICtrlRichEdit_SetText($guiWindowIDs[15],"Test message viewer")	; clear test message viewer state
+   GUICtrlSetState($guiWindowIDs[16], $GUI_UNCHECKED)	; clear minor variables viewr flag state
+   _GUICtrlRichEdit_SetText($guiWindowIDs[17],"Replace it with minor variables list")	; clear minor variables viewr state
+   Return $bpList	; update breakpoints list
+EndFunc
+
+; set breakpoint (bp)
+Func set_bp(ByRef $guiWindowIDs, ByRef $bpList)
+   Local $slCount = _GUICtrlEdit_GetLineCount($guiWindowIDs[2]) - 1	; count of line (l) in source (s)
+   Local $current_line = _GUICtrlEdit_LineFromChar($guiWindowIDs[2]) + 1	; get current line were is put cariet
+   Local $current_idx = 0	; new index (idx) of new breakpoint in bp list
+   Local $flag = 1	; flag to see if breakpoint is already set on chousen line
+
+   _GUICtrlRichEdit_SetText($guiWindowIDs[15],"Test message viewer")	; update message viewer
+
+   ; find if current line has already break
+   For $idx = 0 To $slCount
+	  If $bpList[$idx] == $current_line Then
+		 $flag = 0
+		 ExitLoop
+	  EndIf
+   Next
+   ; find first clear index in breakpoints list
+   For $idx = 0 To $slCount
+	  If $bpList[$idx] == "" Then
+		 $current_idx = $idx
+		 ExitLoop
+	  EndIf
+   Next
+   ; if current line has no break
+   If $flag == 1 Then
+	  $bpList[$current_idx] = $current_line	; break current line
+	  mark_bp($guiWindowIDs, $current_line)	; set marker on current line
+   Else
+	  _GUICtrlRichEdit_SetText($guiWindowIDs[15],"This line already breaked")	; update message viewer
+   EndIf
+   Return $bpList	; update breakpoints list
+EndFunc
+
+; set marker (mark) on current line with breakpoint (bp)
+Func mark_bp(ByRef $guiWindowIDs, ByRef $line)
+   Local $cpos = _GUICtrlEdit_LineIndex($guiWindowIDs[2], $line - 1)	; get current line were is put cariet
+   _GUICtrlEdit_SetSel($guiWindowIDs[2], $cpos, $cpos + 3)	; select spaces to mark break line
+   _GUICtrlEdit_ReplaceSel($guiWindowIDs[2],"( )")	; input marker
+   Sleep(10)
+   _GUICtrlEdit_SetSel($guiWindowIDs[2], $cpos, $cpos + 3)	; select marker symbols to highlight
+   _GUICtrlRichEdit_SetCharBkColor($guiWindowIDs[2],Dec('1010FF'))	; highlight select marker symbols
+EndFunc
+
+; unset breakpoint (bp)
+Func unset_bp(ByRef $guiWindowIDs, ByRef $bpList)
+   Local $current_idx = ""
+   Local $slCount = _GUICtrlEdit_GetLineCount($guiWindowIDs[2]) - 1	; count of line (l) in source (s)
+   Local $current_line = _GUICtrlEdit_LineFromChar($guiWindowIDs[2]) + 1	; get current line were is put cariet
+   Local $flag
+
+   _GUICtrlRichEdit_SetText($guiWindowIDs[15],"Test message viewer")	; update message viewer
+
+   ; find if current line hasn't break
+   For $idx_i = 0 To $slCount
+	  If $bpList[$idx_i] == $current_line Then
+		 $current_idx = $idx_i
+		 $flag = 1
+		 Sleep(5)
+		 ExitLoop
+	  Else
+		 $flag = 0
+	  EndIf
+   Next
+   ; if current line has break
+   If $flag == 0 Then
+	  _GUICtrlRichEdit_SetText($guiWindowIDs[15],"This line has no breake")	; update message viewer if not
+   Else
+	  ; unset break from current line
+	  For $idx_j = $current_idx To $slCount - 1
+		 $bpList[$idx_j] = $bpList[$idx_j+1]
+	  Next
+	  unmark_bp($guiWindowIDs, ($current_line - 1))	; unset marker on current line
+   EndIf
+   Return $bpList	; update breakpoints list
+EndFunc
+
+; unset (un) marker (mark) from current line with breakpoint (bp)
+Func unmark_bp(ByRef $guiWindowIDs, ByRef $line)
+   Local $cpos = _GUICtrlEdit_LineIndex($guiWindowIDs[2], $line)	; get current line were is put cariet
+   _GUICtrlEdit_SetSel($guiWindowIDs[2], $cpos, $cpos + 3)	; select marker symbols to remove
+   _GUICtrlEdit_ReplaceSel($guiWindowIDs[2], "   ")	; input spaces
+   Sleep(10)
+   _GUICtrlEdit_SetSel($guiWindowIDs[2], $cpos, $cpos + 3)	; select spaces to highlight
+   _GUICtrlRichEdit_SetCharBkColor($guiWindowIDs[2],Dec('FFFFFF'))	; highlight select spaces
+EndFunc
+
+; set special 'current' marker (current) to current breakpoint
+Func current(ByRef $tStep, ByRef $bpList, ByRef $guiWindowIDs)
+   Local $bpCount = 0	; count of users breakpoints (bp)
+   ; increment counter untill next breakpoint has no value
+   For $idx = 0 To UBound($bpList) - 1
+	  If $bpList[$idx] == "" Then
+		 $bpCount = $idx
+		 ExitLoop
+	  EndIf
+   Next
+   ; if it only running set this (t) step on next state and set marker on current position
+   If $tStep == 0 Then
+	  set_currentMark($tStep, $bpList, $guiWindowIDs)
+	  Sleep(10)
+	  $tStep = 1
+   ; if it's last state clear this step and remove marker from current position
+   ElseIf $tStep == $bpCount Then
+	  unset_currentMark($tStep, $bpList, $guiWindowIDs)
+	  Sleep(10)
+	  $tStep = ""
+   ; if it's half state remove previous marker and set next marker with incrementing this state value
+   Else
+	  unset_currentMark(($tStep - 1), $bpList, $guiWindowIDs)
+	  Sleep(10)
+	  set_currentMark($tStep, $bpList, $guiWindowIDs)
+	  Sleep(10)
+	  $tStep = $tStep + 1
+   EndIf
+   Return $tStep
+EndFunc
+
+; set current marker (mark) on current posiotion (current)
+Func set_currentMark(ByRef $tStep, ByRef $bpList, ByRef $guiWindowIDs)
+   Local $chPos = _GUICtrlEdit_LineIndex($guiWindowIDs[2], ($bpList[$tStep] - 1))	; get position (pos) in index of first char (ch) symbol in current breakes line
+   _GUICtrlEdit_SetSel($guiWindowIDs[2], $chPos+4, $chPos + 7)	; select spaces symbol to move it with current marker
+   _GUICtrlEdit_ReplaceSel($guiWindowIDs[2]," =>")	; input current marker
+   Sleep(10)
+   _GUICtrlEdit_SetSel($guiWindowIDs[2], $chPos+4, $chPos + 7)	; select marker symbols to highlight
+   _GUICtrlRichEdit_SetCharBkColor($guiWindowIDs[2],Dec('10FFFF'))	; highlight select marker symbols
+EndFunc
+
+; unset current marker (mark) on current posiotion (current)
+Func unset_currentMark(ByRef $tStep, ByRef $bpList, ByRef $guiWindowIDs)
+   Local $chPos = _GUICtrlEdit_LineIndex($guiWindowIDs[2], ($bpList[$tStep] - 1))	; get position (pos) in index of first char (ch) symbol in current breakes line
+   _GUICtrlEdit_SetSel($guiWindowIDs[2], $chPos+4, $chPos + 7)	; select current marker symbol to move it with spaces
+   _GUICtrlEdit_ReplaceSel($guiWindowIDs[2], "   ")	; input spaces
+   Sleep(10)
+   _GUICtrlEdit_SetSel($guiWindowIDs[2], $chPos+4, $chPos + 7)	; select spaces to highlight
+   _GUICtrlRichEdit_SetCharBkColor($guiWindowIDs[2],Dec('FFFFFF'))	; highlight select spaces
+EndFunc
+
+; sorting (sort) breakpoints list (bpl)
+Func sort_bpl(ByRef $bpList)
+   ; simple bubble sorting
+   For $idx_i = 0 To UBound($bpList) - 2
+	  For $idx_j = 0 To UBound($bpList) - 2
+		 If $bpList[$idx_j + 1] == "" Then
+			ExitLoop
+		 Else
+			If $bpList[$idx_j] > $bpList[$idx_j + 1] Then
+			   $tmp = $bpList[$idx_j]
+			   $bpList[$idx_j] = $bpList[$idx_j + 1]
+			   $bpList[$idx_j + 1] = $tmp
+			EndIf
+		 EndIf
+	  Next
+   Next
+   Return $bpList	; update breakpoints list
+EndFunc
+
+; starting (start) GNU debuger (gdb)
+Func start_gdb(ByRef $bpList, ByRef $pth, ByRef $guiWindowIDs)
+   Local $gdbPID = Run("gdb --args " & $pth[1] & ".exe", $pth, @SW_SHOW)	; create process to debug source file
+   Sleep(100)
+   Local $gdbWin = WinGetHandle("[ACTIVE]")	; get handle of GNU debuger (gdb) window (win)
+   Sleep(100)
+   WinSetState($gdbWin,"",@SW_HIDE)	; hide debuger window
+   If $bpList[0] == "" Then	;send message if has no users breakpoint
+	  _GUICtrlRichEdit_SetText($guiWindowIDs[15],"Has no breakpoints")	; update message viewer if hasn't bp
+   EndIf
+   ; send 'break' commands to debuger only if has users breakpoints
+   For $idx = 0 To UBound($bpList) - 1
+	  If $bpList[$idx] == "" Then
+		 ExitLoop
+	  Else
+		 ControlSend($gdbWin,"","","b " & $bpList[$idx] & "{ENTER}")
+	  EndIf
+   Next
+   Return $gdbWin	; return debuger window handle to next step of work with it
+EndFunc
+
+; running (run) programm under GNU debuger (gdb)
+Func run_gdb(ByRef $gdbWin, ByRef $guiWindowIDs)
+   _GUICtrlRichEdit_SetText($guiWindowIDs[15],"Test message viewer")	; update message viewer if not
+   ; send 'run 2' command to debuger
+   ControlSend($gdbWin,"","","r 2{ENTER}")
+   Sleep(500)
+   Local $gdbRunWin = WinGetHandle("[ACTIVE]")	; get DNU debuger (gdb) running programm (run) window (win) handle
+   Sleep(10)
+   ; remove previous handle if debuger run program does not exists
+   If $gdbRunWin == $guiWindowIDs[1] Then
+	  $gdbRunWin = ""
+   Else
+	  WinSetState($gdbRunWin,"",@SW_HIDE)	; hide debuger run window if it's exists
+   EndIf
+   Sleep(5)
+;~    ControlSend($gdbWin,"","","info locals{ENTER}")	; send command to debuger to view local variable
+   Return $gdbRunWin	; return debuger run window
+EndFunc
+
+; continue (cn) debug (gdb)
+Func cn_gdb(ByRef $gdbWin, ByRef $guiWindowIDs)
+   _GUICtrlRichEdit_SetText($guiWindowIDs[15],"Test message viewer")	; update message viewer
+   ControlSend($gdbWin,"","","c{ENTER}")
+   Sleep(5)
+;~    ControlSend($gdbWin,"","","info locals{ENTER}")	; send command to debuger to continue debug process
+EndFunc
+
+#CS
+; step (s) in function(in) of debug (gdb) program
+Func sIn_gdb(ByRef $gdbWin, ByRef $guiWindowIDs)
+   _GUICtrlRichEdit_SetText($guiWindowIDs[15],"Test message viewer")	; update message viewer
+   ControlSend($gdbWin,"","","s{ENTER}")
+   Sleep(5)
+;~    ControlSend($gdbWin,"","","info locals{ENTER}")	; send command to debuger to step in function of debug process
+EndFunc
+
+; step (s) out of function(out) of debug (gdb) program
+Func sOut_gdb(ByRef $gdbWin, ByRef $guiWindowIDs)
+   _GUICtrlRichEdit_SetText($guiWindowIDs[15],"Test message viewer")	; update message viewer
+   ControlSend($gdbWin,"","","n{ENTER}")
+   Sleep(5)
+;~    ControlSend($gdbWin,"","","info locals{ENTER}")	; send command to debuger to step out of function of debug process
+EndFunc
+#CE
+
+; stoping (stop) debuger (gdb)
+Func stop_gdb(ByRef $gdbWin, ByRef $tStep, ByRef $bpList, ByRef $guiWindowIDs)
+   If $tStep == "" Then	; only if program not running
+	  ControlSend($gdbWin,"","","q{ENTER}")	; send 'quit' command to debuger to stop debug
+	  Sleep(5)
+   ; if it is not that - send 'quit' command with confirms command
+   Else
+	  ControlSend($gdbWin,"","","q{ENTER}")
+	  Sleep(5)
+	  ControlSend($gdbWin,"","","y{ENTER}")
+	  Sleep(5)
+	  unset_currentMark(($tStep - 1), $bpList, $guiWindowIDs)	; remove current marker from current break line
+	  Sleep(5)
+	  $tStep = ""	; clear flag of runningprogram
+   EndIf
+   $gdbWin = ""	; clear debuger window handle
+   Local $rets[2]
+   $rets[0] = $gdbWin
+   $rets[1] = $tStep
+   Return $rets	; update this dtate and debuger window handle
+EndFunc
+
+; display (print) debuger window (gdb) on debuger viewer
+Func print_gdb(ByRef $gdbWin, ByRef $guiWindowIDs)
+   ; if debuger already exist copy window and set as debuger viewer text
+   If WinExists($gdbWin) Then
+	  ControlSend($gdbWin,"","","^a" & "^c")
+	  Sleep(5)
+	  _GUICtrlRichEdit_SetText($guiWindowIDs[3],ClipGet())
+   EndIf
+EndFunc
+
+; display (print) debug (gdb) running program window (run) on debuger run-window viewer
+Func print_gdbRun(ByRef $gdbRunWin, ByRef $guiWindowIDs)
+   ; if debuger running program already copy window and set as debuger run-window viewer text
+   If WinExists($gdbRunWin) Then
+	  ControlSend($gdbRunWin,"","","^a" & "^c")
+	  Sleep(5)
+	  _GUICtrlRichEdit_SetText($guiWindowIDs[14],ClipGet())
+   EndIf
+EndFunc
+
+; display (print) local running program variables (vars)
+Func pVarGen(ByRef $guiWindowIDs, ByRef $gdbWin)
+   Local $varsList = ""
+   ControlSend($gdbWin,"","","info locals{ENTER}")
+   Sleep(10)
+   print_gdb($gdbWin, $guiWindowIDs)
+   Sleep(10)
+   If BitAND(GUICtrlRead($guiWindowIDs[16]), $GUI_CHECKED) Then
+	  $varsList &= pVarMin($guiWindowIDs)
+   Else
+	  $varsList &= pVarMax($guiWindowIDs)
+   EndIf
+;~    MsgBox($MB_SYSTEMMODAL, "", $varsList)
+   _GUICtrlRichEdit_SetText($guiWindowIDs[13],$varsList)
+EndFunc
+
+; display (p) maximum count (max) of local variables (var)
+Func pVarMax(ByRef $guiWindowIDs)
+   Local $varsList = "", $prev_idx = 1, $test_str = ""
+   _GUICtrlRichEdit_SetText($guiWindowIDs[13],$varsList)	; update variables viewer
+   ; find next position of current break line variables
+   For $idx = _GUICtrlRichEdit_GetLineCount($guiWindowIDs[3]) - 1  To 1 Step -1
+	  $test_str = _GUICtrlRichEdit_GetTextInLine($guiWindowIDs[3],$idx)
+	  If $test_str == "(gdb) info locals" Then	; string to anchorage of first line with variables
+		 $prev_idx = $idx
+		 ExitLoop
+	  EndIf
+   Next
+   Sleep(10)
+   ; concatenate variables to variables list
+   For $idx = ($prev_idx + 1) To _GUICtrlRichEdit_GetLineCount($guiWindowIDs[3]) - 1
+	  $varsList &= _GUICtrlRichEdit_GetTextInLine($guiWindowIDs[3],$idx)
+	  $varsList &= @CRLF
+   Next
+   Return $varsList
+EndFunc
+
+; display (p) chousen minimum count (mim) of local variables (var)
+Func pVarMin(ByRef $guiWindowIDs)
+   Local $varsList = "", $minorVar[_GUICtrlRichEdit_GetLineCount($guiWindowIDs[17])], $prev_idx = 1, $test_str = ""
+   Local $minorList = ""
+   _GUICtrlRichEdit_SetText($guiWindowIDs[13],$varsList)	; update variables viewer
+   ; find next position of current break line variables
+   For $idx = _GUICtrlRichEdit_GetLineCount($guiWindowIDs[3]) - 1  To 1 Step -1
+	  $test_str = _GUICtrlRichEdit_GetTextInLine($guiWindowIDs[3],$idx)
+	  If $test_str == "(gdb) info locals" Then	; string to anchorage of first line with variables
+		 $prev_idx = $idx
+		 ExitLoop
+	  EndIf
+   Next
+   Sleep(10)
+   ; read minor variables list
+   For $idx = 0 To _GUICtrlRichEdit_GetLineCount($guiWindowIDs[17]) - 1
+	  $minorVar[$idx] = _GUICtrlRichEdit_GetTextInLine($guiWindowIDs[17],($idx + 1))
+   Next
+   Sleep(10)
+   ; sorting minor variables list
+   $minorVar = SortMinor($minorVar)
+   Local $last = UBound($minorVar)
+   For $idx = 0 To UBound($minorVar) - 1
+	  If $minorVar[$idx] == "" Then
+		 $last = $idx
+		 ExitLoop
+	  EndIf
+   Next
+   ReDim $minorVar[$last+1]
+   Sleep(5)
+   For $idx = 0 To UBound($minorVar) - 1
+	  $minorList &= $minorVar[$idx]
+	  $minorList &= @CRLF
+   Next
+   _GUICtrlRichEdit_SetText($guiWindowIDs[17],$minorList)
+   Sleep(10)
+   ; concatenate variables to variables list
+   For $idx = ($prev_idx + 1) To _GUICtrlRichEdit_GetLineCount($guiWindowIDs[3]) - 1
+	  $test_str = StringSplit(_GUICtrlRichEdit_GetTextInLine($guiWindowIDs[3],$idx), " = ")
+	  For $inx = 0 To UBound($minorVar) - 1
+		 If $test_str[1] == $minorVar[$inx] Then	; only if splits string of debuger variables has substring equal each one strings of minor variables list
+			$varsList &= _GUICtrlRichEdit_GetTextInLine($guiWindowIDs[3],$idx)
+			$varsList &= @CRLF
+		 EndIf
+	  Next
+   Next
+   Return $varsList
+EndFunc
+
+; sorting the minor variables list
+Func sortMinor(ByRef $minorVar)
+   Local $sorted_minor[UBound($minorVar)], $flag
+   For $idx = 0 To UBound($minorVar) - 1
+	  $flag = 1
+	  For $jdx = 0 To UBound($minorVar) - 1
+		 If $minorVar[$idx] == $sorted_minor[$jdx] Then
+			$flag = 0
+		 EndIf
+	  Next
+	  If $flag == 1 Then
+		 $sorted_minor[$idx] = $minorVar[$idx]
+	  EndIf
+   Next
+   For $jdx = 0 To UBound($minorVar) - 1
+	  For $idx = 0 To UBound($minorVar) - 2
+		 If $sorted_minor[$idx] == "" Then
+			$sorted_minor[$idx] = $sorted_minor[$idx+1]
+			$sorted_minor[$idx+1] = ""
+		 EndIf
+	  Next
+   Next
+   Return $sorted_minor
+EndFunc
+
+; kill debuger or debuging running program if it's no exits {safety net}
+Func hunter_killer(ByRef $pName)
+   Run("cmd /c taskkill /f /IM " & $pName & ".exe & taskkill /f /IM gdb.exe")
+EndFunc
